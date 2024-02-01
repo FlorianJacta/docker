@@ -65,4 +65,4 @@ if __name__=="__main__":
     Gui(pages=pages).run(title="Test", dark_mode=True, port=port, host="0.0.0.0")
 
 else:
-    app = Gui(pages=pages).run(title="Test", dark_mode=True, run_server=False, base_url="test")
+    app = Gui(pages=pages).run(title="Test", dark_mode=True, run_server=False)
