@@ -1,68 +1,77 @@
-from taipy import Gui
+from taipy.gui import Gui, invoke_long_callback
+
 import pandas as pd
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import time
-from taipy.gui import(
-    Markdown,
-    notify,
-    get_state_id,
-    invoke_long_callback,
-)
+
+df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
+
+df['SMA 20'] = df['AAPL.Close'].rolling(20).mean()
+df['SMA 50'] = df['AAPL.Close'].rolling(50).mean()
+
+df['Buy'] = (df['SMA 20'] > df['SMA 50']) & (df['SMA 20'].shift(1) <= df['SMA 50'].shift(1))
+
+
+def create_financial_chart(df, i):
+    if i < len(df):
+        df = df[i-100:i]
 
 
 
-calculate_label = "Calc"
-calculate_label_active = True
-df = pd.DataFrame({"V": [21], "W": [22], "X": [23],"Y": [24],"Z": [25]})
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, subplot_titles=('', ''), row_heights=[0.7, 0.3])
 
-def calculate_action(state):
-    state.calculate_label = "0"
-    state.df = pd.DataFrame({"V": [21], "W": [22], "X": [23],"Y": [24],"Z": [25]})
+    fig.add_trace(go.Candlestick(x=df['Date'],
+                    name='Candlestick',
+                    open=df['AAPL.Open'],
+                    high=df['AAPL.High'],
+                    low=df['AAPL.Low'],
+                    close=df['AAPL.Close']), row=1, col=1)
 
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['SMA 20'], mode='lines', name='SMA 20'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['SMA 50'], mode='lines', name='SMA 50'), row=1, col=1)
+
+    fig.add_trace(go.Bar(x=df['Date'], y=df['AAPL.Volume'], name='Volume', marker_color='grey'), row=2, col=1)
+
+
+    for idx, row in df.iterrows():
+        if row['Buy']:
+            fig.add_annotation(x=row['Date'], y=row['AAPL.Close'],
+                            text="Buy", showarrow=True,
+                            arrowhead=1, arrowcolor="green", arrowsize=3, arrowwidth=1,
+                            bgcolor="grey", row=1, col=1)
+
+    # Have a cursor
+    fig.update_yaxes(spikemode='across', spikesnap='cursor')
+    fig.update_layout(hoverdistance=1, hovermode="x unified")
+    return fig
+
+i = int(len(df)/2)
+fig = create_financial_chart(df, i)
+
+
+def iddle():
+    while True:
+        time.sleep(1)
+
+def update_real_time_chart(state):
+    state.fig = create_financial_chart(state.df, state.i)
+    print(state.i)
+    state.i = state.i + 1
+    if state.i > len(state.df):
+        state.i = int(len(df)/2)
+
+def on_init(state):
     invoke_long_callback(state,
-        user_function=do_calculate,
-        user_function_args=[get_state_id(state)],
-        user_status_function=get_status_calculate,
-        period=1000)
-
-def get_status_calculate(state, status, result):
-    if isinstance(status, bool):
-        if status:
-            notify(state, "success", "Heavy set function finished!")
-            state.df = result
-
-            state.calculate_label = "Calc"
-        else:
-            notify(state, "error", "Something went wrong")
-        
-    else:
-        state.calculate_label = str(int(state.calculate_label)+1)
-
-
-def do_calculate(state_id):
-    time.sleep(15)
-    df_old = pd.DataFrame({"A": [1], "B": [2], "C": [3], "D": [4], "E": [5]})
-    df_new = pd.DataFrame({"A": [12], "B": [14], "C": [16], "D": [18], "E": [20]})
-    try:
-        df_result = df_new.subtract(df_old, fill_value=0)
-    except Exception as ex:
-        raise ex
-    
-    return df_result
-
-calc_md = Markdown(
-    """
-<|{calculate_label}|button|on_action=calculate_action|active={calculate_label_active}|>
-
-<|{df}|table|>
-"""
-)
-
-pages = {"taipy/Calculate": calc_md}
+                         iddle, [],
+                         update_real_time_chart, [],
+                         500)
 
 
 if __name__=="__main__":
     port = 8080
-    Gui(pages=pages).run(title="Test", dark_mode=True, port=port, host="0.0.0.0")
+    Gui(page="<|chart|figure={fig}|height=800px|>").run(title="Test", dark_mode=True, port=port, host="0.0.0.0")
 
 else:
-    app = Gui(pages=pages).run(title="Test", dark_mode=True, run_server=False, base_url="test")
+    app = Gui(page="<|chart|figure={fig}|height=800px|>").run(title="Test", dark_mode=True, run_server=False, base_url="test")
